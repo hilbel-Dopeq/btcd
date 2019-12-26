@@ -4,7 +4,7 @@
 
 package rpcclient
 
-import (
+import 
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
@@ -13,12 +13,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-)
-
-const (
-	// defaultMaxFeeRate is the default maximum fee rate in sat/KB enforced
-	// by bitcoind v0.19.0 or after for transaction broadcast.
-	defaultMaxFeeRate = btcutil.SatoshiPerBitcoin / 10
 )
 
 // SigHashType enumerates the available signature hashing types that the
@@ -302,31 +296,7 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 		txHex = hex.EncodeToString(buf.Bytes())
 	}
 
-	// Due to differences in the sendrawtransaction API for different
-	// backends, we'll need to inspect our version and construct the
-	// appropriate request.
-	version, err := c.BackendVersion()
-	if err != nil {
-		return newFutureError(err)
-	}
-
-	var cmd *btcjson.SendRawTransactionCmd
-	switch version {
-	// Starting from bitcoind v0.19.0, the MaxFeeRate field should be used.
-	case BitcoindPost19:
-		// Using a 0 MaxFeeRate is interpreted as a maximum fee rate not
-		// being enforced by bitcoind.
-		var maxFeeRate int32
-		if !allowHighFees {
-			maxFeeRate = defaultMaxFeeRate
-		}
-		cmd = btcjson.NewBitcoindSendRawTransactionCmd(txHex, maxFeeRate)
-
-	// Otherwise, use the AllowHighFees field.
-	default:
-		cmd = btcjson.NewSendRawTransactionCmd(txHex, &allowHighFees)
-	}
-
+	cmd := btcjson.NewSendRawTransactionCmd(txHex, &allowHighFees)
 	return c.sendCmd(cmd)
 }
 
@@ -653,42 +623,4 @@ func (c *Client) SearchRawTransactionsVerbose(address btcutil.Address, skip,
 
 	return c.SearchRawTransactionsVerboseAsync(address, skip, count,
 		includePrevOut, reverse, &filterAddrs).Receive()
-}
-
-// FutureDecodeScriptResult is a future promise to deliver the result
-// of a DecodeScriptAsync RPC invocation (or an applicable error).
-type FutureDecodeScriptResult chan *response
-
-// Receive waits for the response promised by the future and returns information
-// about a script given its serialized bytes.
-func (r FutureDecodeScriptResult) Receive() (*btcjson.DecodeScriptResult, error) {
-	res, err := receiveFuture(r)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal result as a decodescript result object.
-	var decodeScriptResult btcjson.DecodeScriptResult
-	err = json.Unmarshal(res, &decodeScriptResult)
-	if err != nil {
-		return nil, err
-	}
-
-	return &decodeScriptResult, nil
-}
-
-// DecodeScriptAsync returns an instance of a type that can be used to
-// get the result of the RPC at some future time by invoking the Receive
-// function on the returned instance.
-//
-// See DecodeScript for the blocking version and more details.
-func (c *Client) DecodeScriptAsync(serializedScript []byte) FutureDecodeScriptResult {
-	scriptHex := hex.EncodeToString(serializedScript)
-	cmd := btcjson.NewDecodeScriptCmd(scriptHex)
-	return c.sendCmd(cmd)
-}
-
-// DecodeScript returns information about a script given its serialized bytes.
-func (c *Client) DecodeScript(serializedScript []byte) (*btcjson.DecodeScriptResult, error) {
-	return c.DecodeScriptAsync(serializedScript).Receive()
 }

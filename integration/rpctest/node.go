@@ -42,11 +42,6 @@ type nodeConfig struct {
 
 // newConfig returns a newConfig with all default values.
 func newConfig(prefix, certFile, keyFile string, extra []string) (*nodeConfig, error) {
-	btcdPath, err := btcdExecutablePath()
-	if err != nil {
-		btcdPath = "btcd"
-	}
-
 	a := &nodeConfig{
 		listen:    "127.0.0.1:18555",
 		rpcListen: "127.0.0.1:18556",
@@ -54,10 +49,11 @@ func newConfig(prefix, certFile, keyFile string, extra []string) (*nodeConfig, e
 		rpcPass:   "pass",
 		extra:     extra,
 		prefix:    prefix,
-		exe:       btcdPath,
-		endpoint:  "ws",
-		certFile:  certFile,
-		keyFile:   keyFile,
+
+		exe:      "btcd",
+		endpoint: "ws",
+		certFile: certFile,
+		keyFile:  keyFile,
 	}
 	if err := a.setDefaults(); err != nil {
 		return nil, err
@@ -115,6 +111,10 @@ func (n *nodeConfig) arguments() []string {
 	args = append(args, fmt.Sprintf("--rpccert=%s", n.certFile))
 	// --rpckey
 	args = append(args, fmt.Sprintf("--rpckey=%s", n.keyFile))
+	// --txindex
+	args = append(args, "--txindex")
+	// --addrindex
+	args = append(args, "--addrindex")
 	if n.dataDir != "" {
 		// --datadir
 		args = append(args, fmt.Sprintf("--datadir=%s", n.dataDir))
@@ -250,19 +250,6 @@ func (n *node) cleanup() error {
 		}
 	}
 
-	return n.config.cleanup()
-}
-
-// shutdown terminates the running btcd process, and cleans up all
-// file/directories created by node.
-func (n *node) shutdown() error {
-	if err := n.stop(); err != nil {
-		return err
-	}
-	if err := n.cleanup(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // genCertPair generates a key/cert pair to the paths provided.
@@ -272,16 +259,3 @@ func genCertPair(certFile, keyFile string) error {
 	cert, key, err := btcutil.NewTLSCertPair(org, validUntil, nil)
 	if err != nil {
 		return err
-	}
-
-	// Write cert and key files.
-	if err = ioutil.WriteFile(certFile, cert, 0666); err != nil {
-		return err
-	}
-	if err = ioutil.WriteFile(keyFile, key, 0600); err != nil {
-		os.Remove(certFile)
-		return err
-	}
-
-	return nil
-}
